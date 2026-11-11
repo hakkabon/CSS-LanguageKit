@@ -241,10 +241,13 @@ private struct CSSStructureValidator {
         declarationCount += 1
         guard !hasColon else { return }
         let offset = tokens[insertionIndex].range.lowerBound
-        diagnostics.append(.init(
+        let diagnostic = LanguageProviderDiagnostic(
             severity: .error, message: "Expected ':' in CSS declaration",
-            range: .init(location: offset, length: 0), expected: [":"]))
-        recoveryEdits.append(.insert(terminal: ":", atToken: insertionIndex))
+            range: .init(location: offset, length: 0), expected: [":"])
+        diagnostics.append(diagnostic)
+        recoveryEdits.append(.init(
+            action: .insert(terminal: ":", atUTF16Offset: offset),
+            expected: [":"], diagnosticID: diagnostic.id))
     }
 
     private func providerEdit(
@@ -252,12 +255,24 @@ private struct CSSStructureValidator {
     ) -> LanguageProviderRecoveryEdit? {
         switch repair {
         case .insert(let kind, let offset):
-            let index = tokens.firstIndex { $0.range.lowerBound >= offset } ?? tokens.count
-            return .insert(terminal: CSSLexicon.spelling(kind), atToken: index)
-        case .delete(let id, _):
+            return .init(action: .insert(
+                terminal: CSSLexicon.spelling(kind), atUTF16Offset: offset))
+        case .delete(let id, let range):
             guard let index = tokens.firstIndex(where: { $0.id == id }) else { return nil }
-            return .delete(terminal: CSSLexicon.spelling(tokens[index].kind), atToken: index)
-        case .replace, .skip: return nil
+            return .init(action: .delete(
+                terminal: CSSLexicon.spelling(tokens[index].kind), range: range))
+        case .replace(let id, let range, let kind):
+            guard let index = tokens.firstIndex(where: { $0.id == id }) else { return nil }
+            return .init(action: .replace(
+                terminal: CSSLexicon.spelling(tokens[index].kind), range: range,
+                with: CSSLexicon.spelling(kind)))
+        case .skip(let ids, let range):
+            return .init(action: .skip(
+                terminals: ids.compactMap { id in
+                    tokens.first(where: { $0.id == id }).map {
+                        CSSLexicon.spelling($0.kind)
+                    }
+                }, range: range), cost: max(1, ids.count))
         }
     }
 }

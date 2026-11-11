@@ -30,5 +30,11 @@ struct CSSProviderTests {
         #expect(result.diagnostics.contains { $0.expected.contains(":") })
         #expect(result.diagnostics.contains { $0.expected.contains("}") })
         #expect(!result.recoveryEdits.isEmpty)
+        #expect(result.recoveryEdits.contains {
+            if case .insert(let terminal, let offset) = $0.action {
+                return terminal == ":" && offset == 16
+            }
+            return false
+        })
     }
 }
